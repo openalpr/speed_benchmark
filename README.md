@@ -67,7 +67,7 @@ If preferred, you can install OpenALPR software in our pre-built Docker containe
 docker run --rm -v /etc/openalpr:/etc/openalpr/ -it openalpr/commercial-agent /bin/bash
 apt update && apt install -y curl python-pip git
 git clone https://github.com/openalpr/speed_benchmark.git
-cd openalpr-consulting/speed-bench
+cd speed_benchmark/
 pip install -r requirements.txt
 bash <(curl https://deb.openalpr.com/install)  # Select SDK
 ```

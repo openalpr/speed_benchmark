@@ -64,10 +64,9 @@ To estimate the number of cameras for a given total FPS value, use the following
 If preferred, you can install OpenALPR software in our pre-built Docker container
 
 ```bash
-docker run -d -P -v openalpr-vol1-config:/etc/openalpr/ -v openalpr-vol1-images:/var/lib/openalpr/ -it openalpr/commercial-agent
-docker exec -it <container> /bin/bash
+docker run --rm -v /etc/openalpr:/etc/openalpr/ -it openalpr/commercial-agent /bin/bash
 apt update && apt install -y curl python-pip git
-git clone https://github.com/addisonklinke/openalpr-consulting.git
+git clone https://github.com/openalpr/speed_benchmark.git
 cd openalpr-consulting/speed-bench
 pip install -r requirements.txt
 bash <(curl https://deb.openalpr.com/install)  # Select SDK

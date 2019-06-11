@@ -8,12 +8,20 @@ from statistics import mean
 import subprocess
 from threading import Thread, Lock
 from time import time, sleep
-import urllib
 from prettytable import PrettyTable
 import psutil
 from alprstream import AlprStream
 from openalpr import Alpr
 from vehicleclassifier import VehicleClassifier
+
+
+PYTHON_VERSION = platform.python_version_tuple()[0]
+if PYTHON_VERSION == '3':
+    from urllib.request import urlretrieve
+elif PYTHON_VERSION == '2':
+    from urllib import urlretrieve
+else:
+    raise OSError('Expected Python version 2 or 3, but received {}'.format(PYTHON_VERSION))
 
 
 def get_cpu_model(operating):
@@ -34,12 +42,12 @@ class AlprBench:
 
     :param int num_streams: Number of camera streams to simulate.
     :param str or [str] resolution: Resolution(s) of videos to benchmark.
-    :param str downloads: Folder to save benchmark videos to.
+    :param bool gpu: Whether or not to use GPU acceleration.
     :param str runtime: Path to runtime data folder.
     :param str config: Path to OpenALPR configuration file.
     :param bool quiet: Suppress all output besides final results.
     """
-    def __init__(self, num_streams, resolution, downloads='/tmp/alprbench', runtime=None, config=None, quiet=False):
+    def __init__(self, num_streams, resolution, gpu=False, runtime=None, config=None, quiet=False):
 
         # Transfer parameters to attributes
         self.quiet = quiet
@@ -54,11 +62,27 @@ class AlprBench:
             self.resolution = resolution
         else:
             raise ValueError('Expected list or str for resolution, but received {}'.format(resolution))
-        self.downloads = downloads
-        if not os.path.exists(self.downloads):
-            os.mkdir(self.downloads)
+        self.gpu = gpu
+
+        # Detect operating system
+        if platform.system().lower().find('linux') == 0:
+            self.operating = 'linux'
+            self.message('\tOperating system: Linux')
+            self.message('\tCPU model: {}'.format(get_cpu_model('linux')))
+        elif platform.system().lower().find('windows') == 0:
+            self.operating = 'windows'
+            self.message('\tOperating system: Windows')
+            self.message('\tCPU model: {}'.format(get_cpu_model('windows')))
+        else:
+            raise OSError('Detected OS other than Linux or Windows')
 
         # Prepare other attributes
+        if self.operating == 'linux':
+            self.downloads = '/tmp/alprbench'
+        else:
+            self.downloads = os.path.join(os.environ['TEMP'], 'alprbench')
+        if not os.path.exists(self.downloads):
+            os.mkdir(self.downloads)
         self.cpu_usage = {r: [] for r in self.resolution}
         self.threads_active = False
         self.frame_counter = 0
@@ -70,35 +94,40 @@ class AlprBench:
         self.results.title = 'OpenALPR Speed: {} stream(s) on {} threads'.format(
             self.num_streams, cpu_count())
 
-        # Detect operating system
-        if platform.system().lower().find('linux') == 0:
-            operating = 'linux'
-            self.message('\tOperating system: Linux')
-            self.message('\tCPU model: {}'.format(get_cpu_model('linux')))
-        elif platform.system().lower().find('windows') == 0:
-            operating = 'windows'
-            self.message('\tOperating system: Windows')
-            self.message('\tCPU model: {}'.format(get_cpu_model('windows')))
-        else:
-            raise OSError('Detected OS other than Linux or Windows')
-
         # Define default runtime and config paths if not specified
-        if runtime is None:
+        if runtime is not None:
+            self.runtime = runtime
+        else:
             self.runtime = '/usr/share/openalpr/runtime_data'
-            if operating == 'windows':
+            if self.operating == 'windows':
                 self.runtime = 'C:/OpenALPR/Agent' + self.runtime
-        if config is None:
+        if config is not None:
+            self.config = config
+        else:
             self.config = '/usr/share/openalpr/config/openalpr.defaults.conf'
-            if operating == 'windows':
+            if self.operating == 'windows':
                 self.config = 'C:/OpenALPR/Agent' + self.config
         self.message('\tRuntime data: {}'.format(self.runtime))
         self.message('\tOpenALPR configuration: {}'.format(self.config))
+
+        # Enable GPU acceleration
+        if self.gpu:
+            with open(self.config, 'r') as f:
+                lines = [l.strip() for l in f.read().split('\n') if l != '']
+            lines.append('hardware_acceleration = 1')
+            self.config = os.path.join(self.downloads, 'openalpr.conf')
+            with open(self.config, 'w') as f:
+                for l in lines:
+                    f.write('{}\n'.format(l))
 
     def __call__(self):
         """Run threaded benchmarks on all requested resolutions."""
         videos = self.download_benchmarks()
         self.streams = [AlprStream(10, False) for _ in range(self.num_streams)]
-        name_regex = re.compile('(?<=\/)[^\.\/]+')
+        if self.operating == 'linux':
+            name_regex = re.compile('(?<=\/)[^\.\/]+')
+        elif self.operating == 'windows':
+            name_regex = re.compile('(?<=\\\)[^\.\\\]+')
         self.threads_active = True
 
         for v in videos:
@@ -132,7 +161,7 @@ class AlprBench:
         """
         videos = []
         endpoint = 'https://github.com/openalpr/speed_benchmark/releases/download/v1/'
-        files = ['vga.mp4', '720p.mp4', '1080p.mp4', '4k.mp4']
+        files = ['vga.webm', '720p.mp4', '1080p.mp4', '4k.mp4']
         existing = os.listdir(self.downloads)
         self.message('Downloading benchmark videos...')
         for f in files:
@@ -141,7 +170,7 @@ class AlprBench:
                 out = os.path.join(self.downloads, f)
                 videos.append(out)
                 if f not in existing:
-                    _ = urllib.urlretrieve(os.path.join(endpoint, f), out)
+                    _ = urlretrieve('{}/{}'.format(endpoint, f), out)
                     self.message('\tDownloaded {}'.format(res))
                 else:
                     self.message('\tFound local {}'.format(res))
@@ -199,7 +228,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Benchmark OpenALPR software speed at various video resolutions',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-d', '--download_dir', type=str, default='/tmp/alprbench', help='folder to save videos')
+    parser.add_argument('-g', '--gpu', action='store_true', help='run on GPU if available')
     parser.add_argument('-q', '--quiet', action='store_true', help='suppress all output besides final results')
     parser.add_argument('-r', '--resolution', type=str, default='all', help='video resolution to benchmark on')
     parser.add_argument('-s', '--streams', type=int, default=1, help='number of camera streams to simulate')
@@ -212,7 +241,7 @@ if __name__ == '__main__':
     bench = AlprBench(
         args.streams,
         args.resolution,
-        args.download_dir,
+        args.gpu,
         args.runtime,
         args.config,
         args.quiet)

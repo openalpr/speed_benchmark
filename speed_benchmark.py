@@ -141,7 +141,12 @@ class AlprBench:
             threads = []
             for s in self.streams:
                 s.connect_video_file(v, 0)
-            for i in range(cpu_count()):
+
+            if self.gpu:
+                num_threads = 1
+            else:
+                num_threads = cpu_count()
+            for i in range(num_threads):
                 threads.append(Thread(target=self.worker, args=(res, )))
                 threads[i].setDaemon(True)
             start = time()
@@ -204,7 +209,7 @@ class AlprBench:
 
     def worker(self, resolution):
         """Thread for a single Alpr and VehicleClassifier instance."""
-        alpr = Alpr('us', self.config, self.runtime)
+        alpr = Alpr('us', self.config, self.runtime, use_gpu=True)
         vehicle = VehicleClassifier(self.config, self.runtime)
         active_streams = sum([s.video_file_active() for s in self.streams])
         total_queue = sum([s.get_queue_size() for s in self.streams])
@@ -217,14 +222,22 @@ class AlprBench:
             if self.streams[idx].get_queue_size() == 0:
                 sleep(0.1)
                 continue
-            results = self.streams[idx].process_frame(alpr)
-            if results['epoch_time'] > 0 and results['processing_time_ms'] > 0:
-                _ = self.streams[idx].pop_completed_groups_and_recognize_vehicle(vehicle)
-                self.mutex.acquire()
-                self.frame_counter += 1
-                if self.frame_counter % 10 == 0:
-                    self.cpu_usage[resolution].append(psutil.cpu_percent())
-                self.mutex.release()
+            if self.gpu:
+                results = self.streams[idx].process_batch(alpr)
+            else:
+                results = [self.streams[idx].process_frame(alpr)]
+
+            for result in results:
+                if result['epoch_time'] > 0 and result['processing_time_ms'] > 0:
+                    self.mutex.acquire()
+                    self.frame_counter += 1
+                    if self.frame_counter % 10 == 0:
+                        self.cpu_usage[resolution].append(psutil.cpu_percent())
+                    self.mutex.release()
+
+            _ = self.streams[idx].pop_completed_groups_and_recognize_vehicle(vehicle)
+
+        alpr.unload()
 
 
 if __name__ == '__main__':

@@ -8,7 +8,8 @@ from statistics import mean
 import subprocess
 from threading import Thread, Lock
 from time import time, sleep
-from win32com.client import GetObject
+if platform.system().lower().find('windows') == 0:
+    from win32com.client import GetObject
 from prettytable import PrettyTable
 import psutil
 from alprstream import AlprStream

@@ -163,8 +163,8 @@ class AlprBench:
         :return [str] videos: Filepaths to downloaded videos.
         """
         videos = []
-        endpoint = 'https://github.com/openalpr/speed_benchmark/releases/download/v1/'
-        files = ['vga.webm', '720p.mp4', '1080p.mp4', '4k.mp4']
+        endpoint = 'https://github.com/openalpr/speed_benchmark/releases/download/v1'
+        files = ['vga.mp4', '720p.mp4', '1080p.mp4', '4k.mp4']
         existing = os.listdir(self.downloads)
         self.message('Downloading benchmark videos...')
         for f in files:

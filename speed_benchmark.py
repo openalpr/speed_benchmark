@@ -8,6 +8,7 @@ from statistics import mean
 import subprocess
 from threading import Thread, Lock
 from time import time, sleep
+from win32com.client import GetObject
 from prettytable import PrettyTable
 import psutil
 from alprstream import AlprStream
@@ -31,7 +32,9 @@ def get_cpu_model(operating):
         model = [c for c in cpu_info if model_regex.match(c)]
         model = model[0].split(':')[-1].strip()
     elif operating == 'windows':
-        model = platform.processor()
+        root_winmgmts = GetObject('winmgmts:root\cimv2')
+        cpus = root_winmgmts.ExecQuery('Select * from Win32_Processor')
+        model = cpus[0].Name
     else:
         raise ValueError('Expected OS to be linux or windows, but received {}'.format(operating))
     return model

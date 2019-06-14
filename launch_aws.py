@@ -31,7 +31,9 @@ def get_flags(ami, instance_type, key):
     params = {
         'image-id': ami,
         'instance-type': instance_type,
-        'key-name': key}
+        'key-name': key,
+        'user-data': 'file://aws_setup.sh',
+        'security-group-ids': 'sg-01463e7f4849905ee'}
     flags = '--' + ' --'.join(['{} {}'.format(k, v) if v is not None else k for k, v in params.items()])
     return flags
 

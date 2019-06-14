@@ -23,6 +23,10 @@ instances = {
 def get_flags(ami, instance_type, key):
     """Format command line flags for AWS CLI.
 
+    Output from the startup script is viewable on instance at
+    ``/var/log/cloud-init-output.log``. The raw script itself is also stored
+    at ``/var/lib/cloud/instances/[instance-id]/user-data.txt``.
+
     :param str ami: Image for instance.
     :param str instance_type: Type of AWS instance (i.e. t2.micro).
     :param str key: Name of key pair to assign to instance for SSH access.

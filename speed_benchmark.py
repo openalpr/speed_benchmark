@@ -95,8 +95,6 @@ class AlprBench:
         self.round_robin = cycle(range(self.num_streams))
         self.results = PrettyTable()
         self.results.field_names = ['Resolution', 'Total FPS', 'CPU (Avg)', 'CPU (Max)', 'Frames']
-        self.results.title = 'OpenALPR Speed: {} stream(s) on {} threads'.format(
-            self.num_streams, cpu_count())
 
         # Define default runtime and config paths if not specified
         if runtime is not None:
@@ -127,35 +125,14 @@ class AlprBench:
     def __call__(self):
         """Run threaded benchmarks on all requested resolutions."""
         videos = self.download_benchmarks()
-        self.streams = [AlprStream(10, False) for _ in range(self.num_streams)]
-        if self.operating == 'linux':
-            name_regex = re.compile('(?<=\/)[^\.\/]+')
-        elif self.operating == 'windows':
-            name_regex = re.compile('(?<=\\\)[^\.\\\]+')
-        self.threads_active = True
-
-        for v in videos:
-            res = name_regex.findall(v)[-1]
-            self.message('Processing {}...'.format(res))
-            self.frame_counter = 0
-            threads = []
-            for s in self.streams:
-                s.connect_video_file(v, 0)
-            for i in range(cpu_count()):
-                threads.append(Thread(target=self.worker, args=(res, )))
-                threads[i].setDaemon(True)
-            start = time()
-            for t in threads:
-                t.start()
-            while len(threads) > 0:
-                try:
-                    threads = [t.join() for t in threads if t is not None and t.isAlive()]
-                except KeyboardInterrupt:
-                    print('\n\nCtrl-C received! Sending kill to threads...')
-                    self.threads_active = False
-                    break
-            elapsed = time() - start
-            self.format_results(res, elapsed)
+        count = 0
+        min_cpu = 0
+        while min_cpu < 95:
+            min_cpu = self.run_experiment(self.num_streams + count, videos)
+            self.message('\tLowest average CPU usage {:.1f}%'.format(min_cpu))
+            count += 1
+        self.results.title = 'OpenALPR Speed: {} stream(s) on {} threads'.format(
+            self.num_streams + count, cpu_count())
         print(self.results)
 
     def download_benchmarks(self):
@@ -202,6 +179,48 @@ class AlprBench:
         if not self.quiet:
             print(msg)
 
+    def run_experiment(self, num_streams, videos):
+
+        # Reset streams, CPU stats, and table from previous experiments
+        self.streams = [AlprStream(10, False) for _ in range(num_streams)]
+        self.round_robin = cycle(range(num_streams))
+        self.cpu_usage = {r: [] for r in self.resolution}
+        self.results.clear_rows()
+
+        # Compile regex
+        if self.operating == 'linux':
+            name_regex = re.compile('(?<=\/)[^\.\/]+')
+        elif self.operating == 'windows':
+            name_regex = re.compile('(?<=\\\)[^\.\\\]+')
+        self.threads_active = True
+
+        # Run experiment
+        self.message('Testing with {} streams...'.format(num_streams))
+        for v in videos:
+            res = name_regex.findall(v)[-1]
+            self.message('\tProcessing {}'.format(res))
+            self.frame_counter = 0
+            threads = []
+            for s in self.streams:
+                s.connect_video_file(v, 0)
+            for i in range(cpu_count()):
+                threads.append(Thread(target=self.worker, args=(res, )))
+                threads[i].setDaemon(True)
+            start = time()
+            for t in threads:
+                t.start()
+            while len(threads) > 0:
+                try:
+                    threads = [t.join() for t in threads if t is not None and t.isAlive()]
+                except KeyboardInterrupt:
+                    print('\n\nCtrl-C received! Sending kill to threads...')
+                    self.threads_active = False
+                    break
+            elapsed = time() - start
+            self.format_results(res, elapsed)
+        min_cpu = min(mean(self.cpu_usage[r]) for r in self.cpu_usage.keys())
+        return min_cpu
+
     def worker(self, resolution):
         """Thread for a single Alpr and VehicleClassifier instance."""
         alpr = Alpr('us', self.config, self.runtime)
@@ -235,7 +254,7 @@ if __name__ == '__main__':
     parser.add_argument('-g', '--gpu', action='store_true', help='run on GPU if available')
     parser.add_argument('-q', '--quiet', action='store_true', help='suppress all output besides final results')
     parser.add_argument('-r', '--resolution', type=str, default='all', help='video resolution to benchmark on')
-    parser.add_argument('-s', '--streams', type=int, default=1, help='number of camera streams to simulate')
+    parser.add_argument('-s', '--streams', type=int, default=1, help='starting number of camera streams to simulate')
     parser.add_argument('--config', type=str, help='path to OpenALPR config, detects Windows/Linux and uses defaults')
     parser.add_argument('--runtime', type=str, help='path to runtime data, detects Windows/Linux and uses defaults')
     args = parser.parse_args()

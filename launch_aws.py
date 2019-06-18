@@ -95,7 +95,7 @@ if __name__ == '__main__':
     print('Launching instances...')
     ids, types = launch_instances(args.ami, instances, args.key, args.version)
     for t, id in zip(types, ids):
-        print('\t{}: {}'.format(t, id))
+        print('\t{:<12}: {}'.format(t, id))
     print('Setting shutdown behavior to terminate...', end='\r')
     set_auto_terminate(ids)
     print('Setting shutdown behavior to terminate... Done')

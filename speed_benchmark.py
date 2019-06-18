@@ -57,7 +57,7 @@ def ptable_to_csv(table, filename, headers=True, mode='a'):
     raw = table.get_string()
     data = [tuple(filter(None, map(str.strip, splitline)))
             for line in raw.splitlines()
-            for splitline in [line.split('|')] if len(splitline) > 1]
+            for splitline in [str(line).split('|')] if len(splitline) > 1]
     if table.title is not None:
         data = data[1:]
     if not headers:

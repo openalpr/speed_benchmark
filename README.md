@@ -7,7 +7,7 @@ Drive OpenALPR on all CPU cores to benchmark speed for various video resolutions
 * OpenALPR commercial license (2-week evaluation licenses can be obtained from 
 [here](https://license.openalpr.com/evalrequest/))
 * Ubuntu 18.04, Ubuntu 16.04, or Windows 10
-* Python3
+* Python (2 or 3)
 
 ## Installation
 

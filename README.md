@@ -53,7 +53,7 @@ Using default options
 user@ubuntu:~/git/speed-bench$ python speed_benchmark.py
 Initializing...
 	Operating system: Linux
-	CPU model: Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
+	CPU model: Intel Core i7-8750H CPU @ 2.20GHz
 	OpenALPR version: 2.7.101
 	Runtime data: /usr/share/openalpr/runtime_data
 	OpenALPR configuration: /usr/share/openalpr/config/openalpr.defaults.conf
@@ -78,6 +78,7 @@ Testing with 1 stream(s)...
 |   1080p    |    44.4   |    88.8   |   100.0   |  479   |
 |     4k     |    23.8   |    93.7   |   100.0   |  479   |
 +------------+-----------+-----------+-----------+--------+
+Saving results to /home/user/git/speed_benchmark/speed-bench-20190618.csv
 ```
 
 Starting with 3 streams and incrementing by 2 each time 95% CPU utilization is not achieved
@@ -86,7 +87,7 @@ Starting with 3 streams and incrementing by 2 each time 95% CPU utilization is n
 user@ubuntu:~/git/speed-bench$ python speed_benchmark.py --thres 95 --streams 3 --step 2
 Initializing...
 	Operating system: Linux
-	CPU model: Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
+	CPU model: Intel Core i7-8750H CPU @ 2.20GHz
 	OpenALPR version: 2.7.101
 	Runtime data: /usr/share/openalpr/runtime_data
 	OpenALPR configuration: /usr/share/openalpr/config/openalpr.defaults.conf
@@ -117,4 +118,5 @@ Testing with 5 stream(s)...
 |   1080p    |    54.1   |    97.3   |   100.0   |  479   |
 |     4k     |    29.5   |    99.2   |   100.0   |  479   |
 +------------+-----------+-----------+-----------+--------+
+Saving results to /home/user/git/speed_benchmark/speed-bench-20190618.csv
 ```

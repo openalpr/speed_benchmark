@@ -39,6 +39,7 @@ def get_cpu_model(operating):
         model = cpus[0].Name
     else:
         raise ValueError('Expected OS to be linux or windows, but received {}'.format(operating))
+    model = re.sub('\([RTM]+\)', '', model)
     return model
 
 

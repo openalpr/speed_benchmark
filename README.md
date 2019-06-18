@@ -54,6 +54,7 @@ user@ubuntu:~/git/speed-bench$ python speed_benchmark.py
 Initializing...
 	Operating system: Linux
 	CPU model: Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
+	OpenALPR version: 2.7.101
 	Runtime data: /usr/share/openalpr/runtime_data
 	OpenALPR configuration: /usr/share/openalpr/config/openalpr.defaults.conf
 Downloading benchmark videos...
@@ -86,6 +87,7 @@ user@ubuntu:~/git/speed-bench$ python speed_benchmark.py --thres 95 --streams 3 
 Initializing...
 	Operating system: Linux
 	CPU model: Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
+	OpenALPR version: 2.7.101
 	Runtime data: /usr/share/openalpr/runtime_data
 	OpenALPR configuration: /usr/share/openalpr/config/openalpr.defaults.conf
 Downloading benchmark videos...

@@ -75,7 +75,7 @@ class AlprBench:
         self.thres = thres
         self.gpu = gpu
 
-        # Detect operating system
+        # Detect operating system and alpr version
         if platform.system().lower().find('linux') == 0:
             self.operating = 'linux'
             self.message('\tOperating system: Linux')
@@ -86,6 +86,9 @@ class AlprBench:
             self.message('\tCPU model: {}'.format(get_cpu_model('windows')))
         else:
             raise OSError('Detected OS other than Linux or Windows')
+        alpr = Alpr('us', '', '')
+        self.message('\tOpenALPR version: {}'.format(alpr.get_version()))
+        alpr.unload()
 
         # Prepare other attributes
         if self.operating == 'linux':

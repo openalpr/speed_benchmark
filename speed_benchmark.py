@@ -44,19 +44,25 @@ def get_cpu_model(operating):
 class AlprBench:
     """Benchmark OpenALPR software speed for various video resolutions.
 
-    :param int num_streams: Number of camera streams to simulate.
+    :param int num_streams: Starting number of camera streams to simulate.
+    :param int step: Number of streams to add each time ``thres`` CPU
+        utilization is not achieved.
     :param str or [str] resolution: Resolution(s) of videos to benchmark.
+    :param int or float: Target for lowest average CPU utilization. If
+        ``thres > 0``, experiments will be run with additional streams until
+        the threshold condition is met (recommended value 95).
     :param bool gpu: Whether or not to use GPU acceleration.
     :param str runtime: Path to runtime data folder.
     :param str config: Path to OpenALPR configuration file.
     :param bool quiet: Suppress all output besides final results.
     """
-    def __init__(self, num_streams, resolution, gpu=False, runtime=None, config=None, quiet=False):
+    def __init__(self, num_streams, step, resolution, thres, gpu=False, runtime=None, config=None, quiet=False):
 
         # Transfer parameters to attributes
         self.quiet = quiet
         self.message('Initializing...')
         self.num_streams = num_streams
+        self.step = step
         if isinstance(resolution, str):
             if resolution == 'all':
                 self.resolution = ['vga', '720p', '1080p', '4k']
@@ -66,6 +72,7 @@ class AlprBench:
             self.resolution = resolution
         else:
             raise ValueError('Expected list or str for resolution, but received {}'.format(resolution))
+        self.thres = thres
         self.gpu = gpu
 
         # Detect operating system
@@ -125,14 +132,14 @@ class AlprBench:
     def __call__(self):
         """Run threaded benchmarks on all requested resolutions."""
         videos = self.download_benchmarks()
-        count = 0
+        current_streams = self.num_streams
         min_cpu = 0
-        while min_cpu < 95:
-            min_cpu = self.run_experiment(self.num_streams + count, videos)
+        while min_cpu <= self.thres:
+            min_cpu = self.run_experiment(current_streams, videos)
             self.message('\tLowest average CPU usage {:.1f}%'.format(min_cpu))
-            count += 1
+            current_streams += self.step
         self.results.title = 'OpenALPR Speed: {} stream(s) on {} threads'.format(
-            self.num_streams + count, cpu_count())
+            current_streams - self.step, cpu_count())
         print(self.results)
 
     def download_benchmarks(self):
@@ -195,7 +202,7 @@ class AlprBench:
         self.threads_active = True
 
         # Run experiment
-        self.message('Testing with {} streams...'.format(num_streams))
+        self.message('Testing with {} stream(s)...'.format(num_streams))
         for v in videos:
             res = name_regex.findall(v)[-1]
             self.message('\tProcessing {}'.format(res))
@@ -255,6 +262,8 @@ if __name__ == '__main__':
     parser.add_argument('-q', '--quiet', action='store_true', help='suppress all output besides final results')
     parser.add_argument('-r', '--resolution', type=str, default='all', help='video resolution to benchmark on')
     parser.add_argument('-s', '--streams', type=int, default=1, help='starting number of camera streams to simulate')
+    parser.add_argument('-t', '--thres', type=int, default=0, help='target for lowest average CPU utilization')
+    parser.add_argument('--step', type=int, default=1, help='number of streams to add each time thres is not achieved')
     parser.add_argument('--config', type=str, help='path to OpenALPR config, detects Windows/Linux and uses defaults')
     parser.add_argument('--runtime', type=str, help='path to runtime data, detects Windows/Linux and uses defaults')
     args = parser.parse_args()
@@ -263,7 +272,9 @@ if __name__ == '__main__':
         args.resolution = [r.strip() for r in args.resolution.split(',')]
     bench = AlprBench(
         args.streams,
+        args.step,
         args.resolution,
+        args.thres,
         args.gpu,
         args.runtime,
         args.config,

@@ -164,9 +164,10 @@ class AlprBench:
                     self.message('\tFound local {}'.format(res))
         return videos
 
-    def format_results(self, resolution, elapsed):
+    def format_results(self, num_streams, resolution, elapsed):
         """Update results table.
 
+        :param int num_streams: Number of streams used in the experiment.
         :param str resolution: Resolution of the video that was benchmarked.
         :param float elapsed: Time to process video (in seconds).
         :return: None
@@ -174,7 +175,7 @@ class AlprBench:
         total_fps = '{:.1f}'.format(self.frame_counter / elapsed)
         avg_cpu = '{:.1f}'.format(mean(self.cpu_usage[resolution]))
         max_cpu = '{:.1f}'.format(max(self.cpu_usage[resolution]))
-        avg_frames = int(self.frame_counter / self.num_streams)
+        avg_frames = int(self.frame_counter / num_streams)
         self.results.add_row([resolution, total_fps, avg_cpu, max_cpu, avg_frames])
 
     def message(self, msg):
@@ -224,7 +225,7 @@ class AlprBench:
                     self.threads_active = False
                     break
             elapsed = time() - start
-            self.format_results(res, elapsed)
+            self.format_results(num_streams, res, elapsed)
         min_cpu = min(mean(self.cpu_usage[r]) for r in self.cpu_usage.keys())
         return min_cpu
 

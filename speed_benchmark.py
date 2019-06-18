@@ -1,4 +1,5 @@
 import argparse
+from datetime import datetime
 from itertools import cycle
 from multiprocessing import cpu_count
 import os
@@ -41,7 +42,7 @@ def get_cpu_model(operating):
     return model
 
 
-def ptable_to_csv(table, filename, headers=True):
+def ptable_to_csv(table, filename, headers=True, mode='a'):
     """Save PrettyTable results to a CSV file.
 
     Adapted from @AdamSmith https://stackoverflow.com/questions/32128226
@@ -49,15 +50,18 @@ def ptable_to_csv(table, filename, headers=True):
     :param PrettyTable table: Table object to get data from.
     :param str filename: Filepath for the output CSV.
     :param bool headers: Whether to include the header row in the CSV.
+    :param str mode: File writing mode for ``open()`` function.
     :return: None
     """
     raw = table.get_string()
     data = [tuple(filter(None, map(str.strip, splitline)))
             for line in raw.splitlines()
             for splitline in [line.split('|')] if len(splitline) > 1]
+    if table.title is not None:
+        data = data[1:]
     if not headers:
         data = data[1:]
-    with open(filename, 'w') as f:
+    with open(filename, mode) as f:
         for d in data:
             f.write('{}\n'.format(','.join(d)))
 
@@ -284,7 +288,7 @@ if __name__ == '__main__':
         description='Benchmark OpenALPR software speed at various video resolutions',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-g', '--gpu', action='store_true', help='run on GPU if available')
-    parser.add_argument('-o', '--output-dir', type=str, default='/mnt/efs/', help='directory for saving CSV file')
+    parser.add_argument('-o', '--output', type=str, default='/mnt/efs/', help='directory to save CSV file with results')
     parser.add_argument('-q', '--quiet', action='store_true', help='suppress all output besides final results')
     parser.add_argument('-r', '--resolution', type=str, default='all', help='video resolution to benchmark on')
     parser.add_argument('-s', '--streams', type=int, default=1, help='starting number of camera streams to simulate')
@@ -294,6 +298,7 @@ if __name__ == '__main__':
     parser.add_argument('--runtime', type=str, help='path to runtime data, detects Windows/Linux and uses defaults')
     args = parser.parse_args()
 
+    # Run benchmarks
     if ',' in args.resolution:
         args.resolution = [r.strip() for r in args.resolution.split(',')]
     bench = AlprBench(
@@ -306,3 +311,12 @@ if __name__ == '__main__':
         args.config,
         args.quiet)
     bench()
+
+    # Save results to disk
+    file = 'speed-bench-{}.csv'.format(datetime.now().strftime('%Y%m%d'))
+    save = os.path.join(os.path.realpath(args.output), file)
+    print('Saving results to {}'.format(save))
+    if os.path.exists(save):
+        ptable_to_csv(bench.results, save, headers=False)
+    else:
+        ptable_to_csv(bench.results, save)

@@ -3,25 +3,10 @@ import json
 import subprocess
 from warnings import warn
 
-# TODO add feedback loop to benchmark script to determine appropriate number of cores
-# TODO run nginx server on instances, write results to public
-# TODO query HTTP from Python and terminate instance once results are available
-# TODO tag instance Name from subprocess in get_flags()
-
 ami = 'ami-024a64a6685d05041'  # Ubuntu 18.04 LTS 64-bit
 key = 'aklinke'
 instance = 'c4.large'
 version = 'latest'
-instances = {
-    'c5.9xlarge': {'cores': 18, 'cpu': 'Intel Xeon Platinum 8124M @ 3.0 GHz'},
-    'c4.large': {'cores': 1, 'cpu': 'Intel Xeon E5-2666 v3 @ 2.9 GHz'},
-    'm5.2xlarge': {'cores': 4, 'cpu': 'Intel Xeon Platinum 8175M @ 2.5 GHz'},
-    'm5.4xlarge': {'cores': 4, 'cpu': 'Intel Xeon Platinum 8175M @ 2.5 GHz'},
-    't2.large': {'cores': 1, 'cpu': 'Intel Xeon E5-2686 v4 @ 2.3 GHz'},
-    't3a.large': {'cores': 2, 'cpu': 'AMD EPYC 7571 @ 2.2 GHz'},
-    't3.large': {'cores': 1, 'cpu': 'Intel Xeon Platinum 8175M @ 2.5 GHz'},
-    'x1e.xlarge': {'cores': 2, 'cpu': 'Intel Xeon E7-8880 v3 @ 2.3 GHz'},
-    'z1d.large': {'cores': 1, 'cpu': 'Intel Xeon Platinum 8151 @ 3.4 GHz'}}
 
 
 def get_flags(ami, instance_type, key, version):
@@ -37,6 +22,9 @@ def get_flags(ami, instance_type, key, version):
     :param str version: Either GA or latest OpenALPR.
     :return str flags:
     """
+
+    # TODO tag instance Name from subprocess in get_flags()
+
     if version == 'GA':
         setup = 'file://aws_setup_ga.sh'
     elif version == 'latest':
@@ -47,8 +35,7 @@ def get_flags(ami, instance_type, key, version):
         'image-id': ami,
         'instance-type': instance_type,
         'key-name': key,
-        'user-data': setup,
-        'security-group-ids': 'sg-01463e7f4849905ee'}
+        'user-data': setup}
     flags = '--' + ' --'.join(['{} {}'.format(k, v) if v is not None else k for k, v in params.items()])
     return flags
 
@@ -68,7 +55,7 @@ def launch_instances(ami, instance_types, key, version):
         out = subprocess.check_output(cmd.split())
         response = json.loads(out)
         ids.append(response['Instances'][0]['InstanceId'])
-    return ids
+    return ids, instance_types
 
 
 def set_auto_terminate(ids):
@@ -95,7 +82,20 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--version', type=str, required=True, help='either GA or latest OpenALPR')
     args = parser.parse_args()
 
-    ids = launch_instances(args.ami, instances, args.key)
-    for id in ids:
-        print(id)
+    instances = [
+        't2.large',
+        'c5.9xlarge',
+        'c4.large',
+        'm5.2xlarge',
+        'm5.4xlarge',
+        't3a.large',
+        't3.large',
+        'x1e.xlarge',
+        'z1d.large']
+    print('Launching instances...')
+    ids, types = launch_instances(args.ami, instances, args.key, args.version)
+    for t, id in zip(types, ids):
+        print('\t{}: {}'.format(t, id))
+    print('Setting shutdown behavior to terminate...', end='\r')
     set_auto_terminate(ids)
+    print('Setting shutdown behavior to terminate... Done')

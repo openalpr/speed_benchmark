@@ -11,9 +11,22 @@ Drive OpenALPR on all CPU cores to benchmark speed for various video resolutions
 
 ## Installation
 
+Generic
+
 1. Download the OpenALPR [SDK](http://doc.openalpr.com/sdk.html#installation) 
 2. Clone this repository `git clone https://github.com/addisonklinke/openalpr-consulting.git`
 3. Install the Python requirements `pip install -r requirements.txt`
+
+Docker
+
+```bash
+docker run -it --rm -v /etc/openalpr:/etc/openalpr/ openalpr/commercial-agent /bin/bash
+apt update && apt install -y curl python-pip git
+git clone https://github.com/openalpr/speed_benchmark.git
+cd speed_benchmark/
+pip install -r requirements.txt
+bash <(curl https://deb.openalpr.com/install)  # Select SDK
+```
 
 ## Usage
 
@@ -102,17 +115,4 @@ Testing with 5 stream(s)...
 |   1080p    |    54.1   |    97.3   |   100.0   |  798   |
 |     4k     |    29.5   |    99.2   |   100.0   |  798   |
 +------------+-----------+-----------+-----------+--------+
-```
-
-## Running in Docker
-
-If preferred, you can install OpenALPR software in our pre-built Docker container
-
-```bash
-docker run --rm -v /etc/openalpr:/etc/openalpr/ -it openalpr/commercial-agent /bin/bash
-apt update && apt install -y curl python-pip git
-git clone https://github.com/openalpr/speed_benchmark.git
-cd speed_benchmark/
-pip install -r requirements.txt
-bash <(curl https://deb.openalpr.com/install)  # Select SDK
 ```

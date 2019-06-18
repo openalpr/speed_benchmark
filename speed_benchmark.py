@@ -110,7 +110,7 @@ class AlprBench:
             self.cpu_model = get_cpu_model('windows')
         else:
             raise OSError('Detected OS other than Linux or Windows')
-        self.message('\tOperating system: {}'.format(self.operating.upper()))
+        self.message('\tOperating system: {}'.format(self.operating.capitalize()))
         self.message('\tCPU model: {}'.format(self.cpu_model))
         alpr = Alpr('us', '', '')
         self.message('\tOpenALPR version: {}'.format(alpr.get_version()))

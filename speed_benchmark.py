@@ -158,7 +158,11 @@ class AlprBench:
                     f.write('{}\n'.format(l))
 
     def __call__(self):
-        """Run threaded benchmarks on all requested resolutions."""
+        """Run threaded benchmarks on all requested resolutions.
+
+        :return int final_streams: Number of streams used to achieve the
+            threshold CPU utilization.
+        """
         videos = self.download_benchmarks()
         current_streams = self.num_streams
         min_cpu = 0
@@ -166,9 +170,11 @@ class AlprBench:
             min_cpu = self.run_experiment(current_streams, videos)
             self.message('\tLowest average CPU usage {:.1f}%'.format(min_cpu))
             current_streams += self.step
+        final_streams = current_streams - self.step
         self.results.title = 'OpenALPR Speed: {} stream(s) on {} threads'.format(
-            current_streams - self.step, cpu_count())
+            final_streams, cpu_count())
         print(self.results)
+        return final_streams
 
     def download_benchmarks(self):
         """Save requested benchmark videos locally.
@@ -310,7 +316,7 @@ if __name__ == '__main__':
         args.runtime,
         args.config,
         args.quiet)
-    bench()
+    num_streams = bench()
 
     # Save results to disk
     file = 'speed-bench-{}.csv'.format(datetime.now().strftime('%Y%m%d'))

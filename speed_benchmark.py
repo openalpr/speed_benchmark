@@ -41,6 +41,27 @@ def get_cpu_model(operating):
     return model
 
 
+def ptable_to_csv(table, filename, headers=True):
+    """Save PrettyTable results to a CSV file.
+
+    Adapted from @AdamSmith https://stackoverflow.com/questions/32128226
+
+    :param PrettyTable table: Table object to get data from.
+    :param str filename: Filepath for the output CSV.
+    :param bool headers: Whether to include the header row in the CSV.
+    :return: None
+    """
+    raw = table.get_string()
+    data = [tuple(filter(None, map(str.strip, splitline)))
+            for line in raw.splitlines()
+            for splitline in [line.split('|')] if len(splitline) > 1]
+    if not headers:
+        data = data[1:]
+    with open(filename, 'w') as f:
+        for d in data:
+            f.write('{}\n'.format(','.join(d)))
+
+
 class AlprBench:
     """Benchmark OpenALPR software speed for various video resolutions.
 
@@ -263,6 +284,7 @@ if __name__ == '__main__':
         description='Benchmark OpenALPR software speed at various video resolutions',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-g', '--gpu', action='store_true', help='run on GPU if available')
+    parser.add_argument('-o', '--output-dir', type=str, default='/mnt/efs/', help='directory for saving CSV file')
     parser.add_argument('-q', '--quiet', action='store_true', help='suppress all output besides final results')
     parser.add_argument('-r', '--resolution', type=str, default='all', help='video resolution to benchmark on')
     parser.add_argument('-s', '--streams', type=int, default=1, help='starting number of camera streams to simulate')

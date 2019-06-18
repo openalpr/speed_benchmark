@@ -103,14 +103,14 @@ class AlprBench:
         # Detect operating system and alpr version
         if platform.system().lower().find('linux') == 0:
             self.operating = 'linux'
-            self.message('\tOperating system: Linux')
-            self.message('\tCPU model: {}'.format(get_cpu_model('linux')))
+            self.cpu_model = get_cpu_model('linux')
         elif platform.system().lower().find('windows') == 0:
             self.operating = 'windows'
-            self.message('\tOperating system: Windows')
-            self.message('\tCPU model: {}'.format(get_cpu_model('windows')))
+            self.cpu_model = get_cpu_model('windows')
         else:
             raise OSError('Detected OS other than Linux or Windows')
+        self.message('\tOperating system: {}'.format(self.operating.upper()))
+        self.message('\tCPU model: {}'.format(self.cpu_model))
         alpr = Alpr('us', '', '')
         self.message('\tOpenALPR version: {}'.format(alpr.get_version()))
         alpr.unload()

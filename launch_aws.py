@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 import json
 import subprocess
+from warnings import warn
 
 # TODO add feedback loop to benchmark script to determine appropriate number of cores
 # TODO run nginx server on instances, write results to public
@@ -8,6 +9,9 @@ import subprocess
 # TODO tag instance Name from subprocess in get_flags()
 
 ami = 'ami-024a64a6685d05041'  # Ubuntu 18.04 LTS 64-bit
+key = 'aklinke'
+instance = 'c4.large'
+version = 'latest'
 instances = {
     'c5.9xlarge': {'cores': 18, 'cpu': 'Intel Xeon Platinum 8124M @ 3.0 GHz'},
     'c4.large': {'cores': 1, 'cpu': 'Intel Xeon E5-2666 v3 @ 2.9 GHz'},
@@ -67,6 +71,22 @@ def launch_instances(ami, instance_types, key, version):
     return ids
 
 
+def set_auto_terminate(ids):
+    """Set instances to terminate on shutdown.
+
+    :param [str] ids: List of instance IDs.
+    :return: None
+    """
+    base = 'aws ec2 modify-instance-attribute '
+    flags = '--instance-id {} --attribute instanceInitiatedShutdownBehavior --value terminate'
+    for id in ids:
+        cmd = base + flags.format(id)
+        p = subprocess.Popen(cmd.split())
+        exit_code = p.wait()
+        if exit_code != 0:
+            warn('Non-zero exit status when changing shutdown behavior for {}'.format(id))
+
+
 if __name__ == '__main__':
 
     parser = ArgumentParser(description='Benchmark OpenALPR speed on AWS instances')
@@ -76,3 +96,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     ids = launch_instances(args.ami, instances, args.key)
+    for id in ids:
+        print(id)
+    set_auto_terminate(ids)

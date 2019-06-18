@@ -318,11 +318,17 @@ if __name__ == '__main__':
         args.quiet)
     num_streams = bench()
 
+    # Add CPU model and stream count to results table
+    table = bench.results
+    n_rows = len(table._rows)
+    table.add_column('CPU Model', [bench.cpu_model] * n_rows)
+    table.add_column('Streams', [num_streams] * n_rows)
+
     # Save results to disk
     file = 'speed-bench-{}.csv'.format(datetime.now().strftime('%Y%m%d'))
     save = os.path.join(os.path.realpath(args.output), file)
     print('Saving results to {}'.format(save))
     if os.path.exists(save):
-        ptable_to_csv(bench.results, save, headers=False)
+        ptable_to_csv(table, save, headers=False)
     else:
-        ptable_to_csv(bench.results, save)
+        ptable_to_csv(table, save)

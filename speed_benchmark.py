@@ -5,6 +5,7 @@ from multiprocessing import cpu_count
 import os
 import platform
 import re
+import requests
 from statistics import mean
 import subprocess
 from threading import Thread, Lock
@@ -41,6 +42,20 @@ def get_cpu_model(operating):
         raise ValueError('Expected OS to be linux or windows, but received {}'.format(operating))
     model = re.sub('\([RTM]+\)', '', model)
     return model
+
+
+def get_instance_type():
+    """Attempt to query AWS metadata endpoint for instance type.
+
+    :return str instance_type: AWS designation (or dash for NA).
+    """
+    try:
+        r = requests.get('http://169.254.169.254/latest/meta-data/instance-type')
+        r.raise_for_status()
+        instance_type = r.text
+    except requests.exceptions.ConnectionError:
+        instance_type = '-'
+    return instance_type
 
 
 def ptable_to_csv(table, filename, headers=True, mode='a'):
@@ -323,6 +338,7 @@ if __name__ == '__main__':
     table = bench.results
     n_rows = len(table._rows)
     table.add_column('CPU Model', [bench.cpu_model] * n_rows)
+    table.add_column('AWS Instance', [get_instance_type()] * n_rows)
     table.add_column('Streams', [num_streams] * n_rows)
 
     # Save results to disk

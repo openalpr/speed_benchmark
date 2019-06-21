@@ -307,10 +307,12 @@ class AlprBench:
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
-        description='Benchmark OpenALPR software speed at various video resolutions',
+        description='Benchmark OpenALPR software speed at various video resolutions. Prints an ASCII table of results '
+                    'to stdout and optionally saves to CSV (if specified). If the output file already exists, results '
+                    'will be appended to existing data.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('output', nargs='?', type=str, default=None, help='filepath to save CSV of results')
     parser.add_argument('-g', '--gpu', action='store_true', help='run on GPU if available')
-    parser.add_argument('-o', '--output', type=str, default='/mnt/efs/', help='directory to save CSV file with results')
     parser.add_argument('-q', '--quiet', action='store_true', help='suppress all output besides final results')
     parser.add_argument('-r', '--resolution', type=str, default='all', help='video resolution to benchmark on')
     parser.add_argument('-s', '--streams', type=int, default=1, help='starting number of camera streams to simulate')
@@ -334,18 +336,18 @@ if __name__ == '__main__':
         args.quiet)
     num_streams = bench()
 
-    # Add CPU model and stream count to results table
-    table = bench.results
-    n_rows = len(table._rows)
-    table.add_column('CPU Model', [bench.cpu_model] * n_rows)
-    table.add_column('AWS Instance', [get_instance_type()] * n_rows)
-    table.add_column('Streams', [num_streams] * n_rows)
+    if args.output is not None:
+        # Add CPU model and stream count to results table
+        table = bench.results
+        n_rows = len(table._rows)
+        table.add_column('CPU Model', [bench.cpu_model] * n_rows)
+        table.add_column('AWS Instance', [get_instance_type()] * n_rows)
+        table.add_column('Streams', [num_streams] * n_rows)
 
-    # Save results to disk
-    file = 'speed-bench-{}.csv'.format(datetime.now().strftime('%Y%m%d'))
-    save = os.path.join(os.path.realpath(args.output), file)
-    print('Saving results to {}'.format(save))
-    if os.path.exists(save):
-        ptable_to_csv(table, save, headers=False)
-    else:
-        ptable_to_csv(table, save)
+        # Save results to disk
+        save = os.path.realpath(args.output)
+        print('Saving results to {}'.format(save))
+        if os.path.exists(save):
+            ptable_to_csv(table, save, headers=False)
+        else:
+            ptable_to_csv(table, save)

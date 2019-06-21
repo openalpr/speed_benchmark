@@ -58,15 +58,15 @@ def get_instance_type():
     return instance_type
 
 
-def ptable_to_csv(table, filename, headers=True, mode='a'):
+def ptable_to_csv(table, filename, mode, headers=True):
     """Save PrettyTable results to a CSV file.
 
     Adapted from @AdamSmith https://stackoverflow.com/questions/32128226
 
     :param PrettyTable table: Table object to get data from.
     :param str filename: Filepath for the output CSV.
-    :param bool headers: Whether to include the header row in the CSV.
     :param str mode: File writing mode for ``open()`` function.
+    :param bool headers: Whether to include the header row in the CSV.
     :return: None
     """
     raw = table.get_string()
@@ -348,6 +348,6 @@ if __name__ == '__main__':
         save = os.path.realpath(args.output)
         print('Saving results to {}'.format(save))
         if os.path.exists(save):
-            ptable_to_csv(table, save, headers=False)
+            ptable_to_csv(table, save, 'a', headers=False)
         else:
-            ptable_to_csv(table, save)
+            ptable_to_csv(table, save, 'w')

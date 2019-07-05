@@ -305,7 +305,10 @@ class AlprBench:
             if results['epoch_time'] > 0 and results['processing_time_ms'] > 0:
                 _ = self.streams[idx].pop_completed_groups_and_recognize_vehicle(vehicle)
                 self.mutex.acquire()
-                self.frame_counter += 1
+                if self.gpu:
+                    self.frame_counter += len(batch_results)
+                else:
+                    self.frame_counter += 1
                 if self.frame_counter % 10 == 0:
                     self.cpu_usage[resolution].append(psutil.cpu_percent())
                 self.mutex.release()

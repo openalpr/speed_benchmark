@@ -144,6 +144,7 @@ class AlprBench:
         self.message('\tOperating system: {}'.format(self.operating.capitalize()))
         if self.gpu:
             self.message('\tProcessing on GPU: {}'.format(get_gpu_model(self.device_id)))
+            self.message('\tHost CPU: {}'.format(get_cpu_model(self.operating)))
         else:
             self.message('\tProcessing on CPU: {}'.format(get_cpu_model(self.operating)))
         alpr = Alpr('us', '', '')

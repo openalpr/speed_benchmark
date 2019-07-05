@@ -28,6 +28,10 @@ pip install -r requirements.txt
 bash <(curl https://deb.openalpr.com/install)  # Select SDK
 ```
 
+**GPU Support**
+
+To run with the `--gpu` flag enabled, you must also `pip install nvidia-ml-py` 
+
 ## Usage
 
 1. View all command line options by running `python speed_benchmark.py -h`

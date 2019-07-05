@@ -14,7 +14,6 @@ if platform.system().lower().find('windows') == 0:
     from win32com.client import GetObject
 from prettytable import PrettyTable
 import psutil
-import pynvml
 from alprstream import AlprStream
 from openalpr import Alpr
 from vehicleclassifier import VehicleClassifier
@@ -46,6 +45,11 @@ def get_cpu_model(operating):
 
 
 def get_gpu_model(device_id=0):
+    try:
+        import pynvml
+    except ModuleNotFoundError:
+        print('Please pip install nvidia-ml-py to run on GPU')
+        sys.exit(1)
     pynvml.nvmlInit()
     try:
         handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)

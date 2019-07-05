@@ -14,6 +14,7 @@ if platform.system().lower().find('windows') == 0:
     from win32com.client import GetObject
 from prettytable import PrettyTable
 import psutil
+import pynvml
 from alprstream import AlprStream
 from openalpr import Alpr
 from vehicleclassifier import VehicleClassifier
@@ -41,6 +42,18 @@ def get_cpu_model(operating):
     else:
         raise ValueError('Expected OS to be linux or windows, but received {}'.format(operating))
     model = re.sub('\([RTM]+\)', '', model)
+    return model
+
+
+def get_gpu_model(device_id=0):
+    pynvml.nvmlInit()
+    try:
+        handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)
+    except pynvml.nvml.NVMLError:
+        print('Invalid GPU device ID {}'.format(device_id))
+        sys.exit(1)
+    model = pynvml.nvmlDeviceGetName(handle).decode()
+    model = re.sub(' with.*$', '', model)
     return model
 
 
@@ -94,12 +107,13 @@ class AlprBench:
         the threshold condition is met (recommended value 95).
     :param bool gpu: Whether or not to use GPU acceleration.
     :param int batch_size: Number of images to process simultaneously on GPU.
+    :param int device_id: Identifier for which GPU to use.
     :param str runtime: Path to runtime data folder.
     :param str config: Path to OpenALPR configuration file.
     :param bool quiet: Suppress all output besides final results.
     """
-    def __init__(self, num_streams, step, resolution, thres, gpu=False,
-                 batch_size=10, runtime=None, config=None, quiet=False):
+    def __init__(self, num_streams, step, resolution, thres, gpu=False, batch_size=10,
+                 device_id=0, runtime=None, config=None, quiet=False):
 
         # Transfer parameters to attributes
         self.quiet = quiet
@@ -118,18 +132,20 @@ class AlprBench:
         self.thres = thres
         self.gpu = gpu
         self.batch_size = batch_size
+        self.device_id = device_id
 
         # Detect operating system and alpr version
         if platform.system().lower().find('linux') == 0:
             self.operating = 'linux'
-            self.cpu_model = get_cpu_model('linux')
         elif platform.system().lower().find('windows') == 0:
             self.operating = 'windows'
-            self.cpu_model = get_cpu_model('windows')
         else:
             raise OSError('Detected OS other than Linux or Windows')
         self.message('\tOperating system: {}'.format(self.operating.capitalize()))
-        self.message('\tCPU model: {}'.format(self.cpu_model))
+        if self.gpu:
+            self.message('\tProcessing on GPU: {}'.format(get_gpu_model(self.device_id)))
+        else:
+            self.message('\tProcessing on CPU: {}'.format(get_cpu_model('windows')))
         alpr = Alpr('us', '', '')
         self.message('\tOpenALPR version: {}'.format(alpr.get_version()))
         alpr.unload()
@@ -180,8 +196,12 @@ class AlprBench:
             self.message('\tLowest average CPU usage {:.1f}%'.format(min_cpu))
             current_streams += self.step
         final_streams = current_streams - self.step
-        self.results.title = 'OpenALPR Speed: {} stream(s) on {} threads'.format(
-            final_streams, cpu_count())
+        if self.gpu:
+            self.results.title = 'OpenALPR Speed: {} stream(s) with GPU batch size {}'.format(
+                final_streams, self.batch_size)
+        else:
+            self.results.title = 'OpenALPR Speed: {} stream(s) on {} threads'.format(
+                final_streams, cpu_count())
         print(self.results)
         return final_streams
 
@@ -323,6 +343,7 @@ if __name__ == '__main__':
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('output', nargs='?', type=str, default=None, help='filepath to save CSV of results')
     parser.add_argument('-b', '--batch_size', type=int, default=10, help='for GPU usage only')
+    parser.add_argument('-d', '--device_id', type=int, default=0, help='identification for GPU')
     parser.add_argument('-g', '--gpu', action='store_true', help='run on GPU if available')
     parser.add_argument('-q', '--quiet', action='store_true', help='suppress all output besides final results')
     parser.add_argument('-r', '--resolution', type=str, default='all', help='video resolution to benchmark on')
@@ -343,6 +364,7 @@ if __name__ == '__main__':
         args.thres,
         args.gpu,
         args.batch_size,
+        args.device_id,
         args.runtime,
         args.config,
         args.quiet)

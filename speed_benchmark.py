@@ -1,5 +1,4 @@
 import argparse
-from datetime import datetime
 from itertools import cycle
 from multiprocessing import cpu_count
 import os
@@ -8,6 +7,7 @@ import re
 import requests
 from statistics import mean
 import subprocess
+import sys
 from threading import Thread, Lock
 from time import time, sleep
 if platform.system().lower().find('windows') == 0:
@@ -93,11 +93,13 @@ class AlprBench:
         ``thres > 0``, experiments will be run with additional streams until
         the threshold condition is met (recommended value 95).
     :param bool gpu: Whether or not to use GPU acceleration.
+    :param int batch_size: Number of images to process simultaneously on GPU.
     :param str runtime: Path to runtime data folder.
     :param str config: Path to OpenALPR configuration file.
     :param bool quiet: Suppress all output besides final results.
     """
-    def __init__(self, num_streams, step, resolution, thres, gpu=False, runtime=None, config=None, quiet=False):
+    def __init__(self, num_streams, step, resolution, thres, gpu=False,
+                 batch_size=10, runtime=None, config=None, quiet=False):
 
         # Transfer parameters to attributes
         self.quiet = quiet
@@ -115,6 +117,7 @@ class AlprBench:
             raise ValueError('Expected list or str for resolution, but received {}'.format(resolution))
         self.thres = thres
         self.gpu = gpu
+        self.batch_size = batch_size
 
         # Detect operating system and alpr version
         if platform.system().lower().find('linux') == 0:
@@ -162,16 +165,6 @@ class AlprBench:
                 self.config = 'C:/OpenALPR/Agent' + self.config
         self.message('\tRuntime data: {}'.format(self.runtime))
         self.message('\tOpenALPR configuration: {}'.format(self.config))
-
-        # Enable GPU acceleration
-        if self.gpu:
-            with open(self.config, 'r') as f:
-                lines = [l.strip() for l in f.read().split('\n') if l != '']
-            lines.append('hardware_acceleration = 1')
-            self.config = os.path.join(self.downloads, 'openalpr.conf')
-            with open(self.config, 'w') as f:
-                for l in lines:
-                    f.write('{}\n'.format(l))
 
     def __call__(self):
         """Run threaded benchmarks on all requested resolutions.
@@ -281,7 +274,14 @@ class AlprBench:
 
     def worker(self, resolution):
         """Thread for a single Alpr and VehicleClassifier instance."""
-        alpr = Alpr('us', self.config, self.runtime)
+        if self.gpu:
+            try:
+                alpr = Alpr('us', self.config, self.runtime, use_gpu=True, gpu_batch_size=self.batch_size)
+            except TypeError:
+                print('Your Alpr binding version does not support GPU')
+                sys.exit(1)
+        else:
+            alpr = Alpr('us', self.config, self.runtime)
         vehicle = VehicleClassifier(self.config, self.runtime)
         active_streams = sum([s.video_file_active() for s in self.streams])
         total_queue = sum([s.get_queue_size() for s in self.streams])
@@ -294,7 +294,11 @@ class AlprBench:
             if self.streams[idx].get_queue_size() == 0:
                 sleep(0.1)
                 continue
-            results = self.streams[idx].process_frame(alpr)
+            if self.gpu:
+                batch_results = self.streams[idx].process_batch(alpr)
+                results = batch_results[0]
+            else:
+                results = self.streams[idx].process_frame(alpr)
             if results['epoch_time'] > 0 and results['processing_time_ms'] > 0:
                 _ = self.streams[idx].pop_completed_groups_and_recognize_vehicle(vehicle)
                 self.mutex.acquire()
@@ -312,6 +316,7 @@ if __name__ == '__main__':
                     'will be appended to existing data.',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('output', nargs='?', type=str, default=None, help='filepath to save CSV of results')
+    parser.add_argument('-b', '--batch_size', type=int, default=10, help='for GPU usage only')
     parser.add_argument('-g', '--gpu', action='store_true', help='run on GPU if available')
     parser.add_argument('-q', '--quiet', action='store_true', help='suppress all output besides final results')
     parser.add_argument('-r', '--resolution', type=str, default='all', help='video resolution to benchmark on')
@@ -331,6 +336,7 @@ if __name__ == '__main__':
         args.resolution,
         args.thres,
         args.gpu,
+        args.batch_size,
         args.runtime,
         args.config,
         args.quiet)

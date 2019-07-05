@@ -145,7 +145,7 @@ class AlprBench:
         if self.gpu:
             self.message('\tProcessing on GPU: {}'.format(get_gpu_model(self.device_id)))
         else:
-            self.message('\tProcessing on CPU: {}'.format(get_cpu_model('windows')))
+            self.message('\tProcessing on CPU: {}'.format(get_cpu_model(self.operating)))
         alpr = Alpr('us', '', '')
         self.message('\tOpenALPR version: {}'.format(alpr.get_version()))
         alpr.unload()
@@ -157,14 +157,14 @@ class AlprBench:
             self.downloads = os.path.join(os.environ['TEMP'], 'alprbench')
         if not os.path.exists(self.downloads):
             os.mkdir(self.downloads)
-        self.cpu_usage = {r: [] for r in self.resolution}
+        self.processor_usage = {r: [] for r in self.resolution}
         self.threads_active = False
         self.frame_counter = 0
         self.mutex = Lock()
         self.streams = []
         self.round_robin = cycle(range(self.num_streams))
         self.results = PrettyTable()
-        self.results.field_names = ['Resolution', 'Total FPS', 'CPU (Avg)', 'CPU (Max)', 'Frames']
+        self.results.field_names = ['Resolution', 'Total FPS', 'Processor (Avg %)', 'Processor (Max %)', 'Frames']
 
         # Define default runtime and config paths if not specified
         if runtime is not None:
@@ -236,10 +236,10 @@ class AlprBench:
         :return: None
         """
         total_fps = '{:.1f}'.format(self.frame_counter / elapsed)
-        avg_cpu = '{:.1f}'.format(mean(self.cpu_usage[resolution]))
-        max_cpu = '{:.1f}'.format(max(self.cpu_usage[resolution]))
+        avg_processor = '{:.1f}'.format(mean(self.processor_usage[resolution]))
+        max_processor = '{:.1f}'.format(max(self.processor_usage[resolution]))
         avg_frames = int(self.frame_counter / num_streams)
-        self.results.add_row([resolution, total_fps, avg_cpu, max_cpu, avg_frames])
+        self.results.add_row([resolution, total_fps, avg_processor, max_processor, avg_frames])
 
     def message(self, msg):
         """Control verbosity of output.
@@ -255,7 +255,7 @@ class AlprBench:
         # Reset streams, CPU stats, and table from previous experiments
         self.streams = [AlprStream(10, False) for _ in range(num_streams)]
         self.round_robin = cycle(range(num_streams))
-        self.cpu_usage = {r: [] for r in self.resolution}
+        self.processor_usage = {r: [] for r in self.resolution}
         self.results.clear_rows()
 
         # Compile regex
@@ -292,7 +292,7 @@ class AlprBench:
                         break
             elapsed = time() - start
             self.format_results(num_streams, res, elapsed)
-        min_cpu = min(mean(self.cpu_usage[r]) for r in self.cpu_usage.keys())
+        min_cpu = min(mean(self.processor_usage[r]) for r in self.processor_usage.keys())
         return min_cpu
 
     def worker(self, resolution):
@@ -303,6 +303,8 @@ class AlprBench:
             except TypeError:
                 print('Your Alpr binding version does not support GPU')
                 sys.exit(1)
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(self.device_id)
         else:
             alpr = Alpr('us', self.config, self.runtime)
         vehicle = VehicleClassifier(self.config, self.runtime)
@@ -330,7 +332,11 @@ class AlprBench:
                 else:
                     self.frame_counter += 1
                 if self.frame_counter % 10 == 0:
-                    self.cpu_usage[resolution].append(psutil.cpu_percent())
+                    if self.gpu:
+                        usage = pynvml.nvmlDeviceGetUtilizationRates(handle).gpu
+                    else:
+                        usage = psutil.cpu_percent()
+                    self.processor_usage[resolution].append(usage)
                 self.mutex.release()
 
 

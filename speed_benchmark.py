@@ -254,19 +254,22 @@ class AlprBench:
             threads = []
             for s in self.streams:
                 s.connect_video_file(v, 0)
-            for i in range(cpu_count()):
-                threads.append(Thread(target=self.worker, args=(res, )))
-                threads[i].setDaemon(True)
+
             start = time()
-            for t in threads:
-                t.start()
-            while len(threads) > 0:
-                try:
-                    threads = [t.join() for t in threads if t is not None and t.isAlive()]
-                except KeyboardInterrupt:
-                    print('\n\nCtrl-C received! Sending kill to threads...')
-                    self.threads_active = False
-                    break
+            if self.gpu:
+                self.worker(res)
+            else:
+                for i in range(cpu_count()):
+                    threads.append(Thread(target=self.worker, args=(res, )))
+                    threads[i].setDaemon(True)
+                    threads[i].start()
+                while len(threads) > 0:
+                    try:
+                        threads = [t.join() for t in threads if t is not None and t.isAlive()]
+                    except KeyboardInterrupt:
+                        print('\n\nCtrl-C received! Sending kill to threads...')
+                        self.threads_active = False
+                        break
             elapsed = time() - start
             self.format_results(num_streams, res, elapsed)
         min_cpu = min(mean(self.cpu_usage[r]) for r in self.cpu_usage.keys())

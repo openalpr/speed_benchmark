@@ -193,7 +193,7 @@ class AlprBench:
         min_cpu = 0
         while min_cpu <= self.thres:
             min_cpu = self.run_experiment(current_streams, videos)
-            self.message('\tLowest average CPU usage {:.1f}%'.format(min_cpu))
+            self.message('\tLowest average processor utilization {:.1f}%'.format(min_cpu))
             current_streams += self.step
         final_streams = current_streams - self.step
         if self.gpu:

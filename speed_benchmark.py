@@ -45,11 +45,6 @@ def get_cpu_model(operating):
 
 
 def get_gpu_model(device_id=0):
-    try:
-        import pynvml
-    except ModuleNotFoundError:
-        print('Please pip install nvidia-ml-py to run on GPU')
-        sys.exit(1)
     pynvml.nvmlInit()
     try:
         handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)
@@ -111,13 +106,13 @@ class AlprBench:
         the threshold condition is met (recommended value 95).
     :param bool gpu: Whether or not to use GPU acceleration.
     :param int batch_size: Number of images to process simultaneously on GPU.
-    :param int device_id: Identifier for which GPU to use.
+    :param int or [int] device_ids: Identifier for which GPU(s) to use.
     :param str runtime: Path to runtime data folder.
     :param str config: Path to OpenALPR configuration file.
     :param bool quiet: Suppress all output besides final results.
     """
     def __init__(self, num_streams, step, resolution, thres, gpu=False, batch_size=10,
-                 device_id=0, runtime=None, config=None, quiet=False):
+                 device_ids=0, runtime=None, config=None, quiet=False):
 
         # Transfer parameters to attributes
         self.quiet = quiet
@@ -136,7 +131,10 @@ class AlprBench:
         self.thres = thres
         self.gpu = gpu
         self.batch_size = batch_size
-        self.device_id = device_id
+        if isinstance(device_ids, int):
+            self.device_ids = [device_ids]
+        else:
+            self.device_ids = device_ids
 
         # Detect operating system and alpr version
         if platform.system().lower().find('linux') == 0:
@@ -147,7 +145,8 @@ class AlprBench:
             raise OSError('Detected OS other than Linux or Windows')
         self.message('\tOperating system: {}'.format(self.operating.capitalize()))
         if self.gpu:
-            self.message('\tProcessing on GPU: {}'.format(get_gpu_model(self.device_id)))
+            models = [get_gpu_model(d) for d in self.device_ids]
+            self.message('\tProcessing on GPU(s): {}'.format(', '.join(models)))
             self.message('\tHost CPU: {}'.format(get_cpu_model(self.operating)))
         else:
             self.message('\tProcessing on CPU: {}'.format(get_cpu_model(self.operating)))
@@ -163,9 +162,9 @@ class AlprBench:
         if not os.path.exists(self.downloads):
             os.mkdir(self.downloads)
         self.processor_usage = {r: [] for r in self.resolution}
+        self.mutex = Lock()
         self.threads_active = False
         self.frame_counter = 0
-        self.mutex = Lock()
         self.streams = []
         self.round_robin = cycle(range(self.num_streams))
         self.results = PrettyTable()
@@ -282,34 +281,43 @@ class AlprBench:
 
             start = time()
             if self.gpu:
-                self.worker(res)
+                for i, d in enumerate(self.device_ids):
+                    threads.append(Thread(target=self.worker, args=(res, d)))
+                    threads[i].setDaemon(True)
+                    threads[i].start()
             else:
                 for i in range(cpu_count()):
                     threads.append(Thread(target=self.worker, args=(res, )))
                     threads[i].setDaemon(True)
                     threads[i].start()
-                while len(threads) > 0:
-                    try:
-                        threads = [t.join() for t in threads if t is not None and t.isAlive()]
-                    except KeyboardInterrupt:
-                        print('\n\nCtrl-C received! Sending kill to threads...')
-                        self.threads_active = False
-                        break
+            while len(threads) > 0:
+                try:
+                    threads = [t.join() for t in threads if t is not None and t.isAlive()]
+                except KeyboardInterrupt:
+                    print('\n\nCtrl-C received! Sending kill to threads...')
+                    self.threads_active = False
+                    break
             elapsed = time() - start
             self.format_results(num_streams, res, elapsed)
         min_cpu = min(mean(self.processor_usage[r]) for r in self.processor_usage.keys())
         return min_cpu
 
-    def worker(self, resolution):
-        """Thread for a single Alpr and VehicleClassifier instance."""
+    def worker(self, resolution, device_id=0):
+        """Thread for a single Alpr and VehicleClassifier instance.
+
+        :param str resolution: Video resolution that is being processed.
+        :param int device_id: Optional ID for GPU device to run on.
+        :return: None
+        """
         if self.gpu:
             try:
-                alpr = Alpr('us', self.config, self.runtime, use_gpu=True, gpu_batch_size=self.batch_size)
+                alpr = Alpr(
+                    'us', self.config, self.runtime, use_gpu=True, gpu_batch_size=self.batch_size, gpu_id=device_id)
             except TypeError:
                 print('Your Alpr binding version does not support GPU')
                 sys.exit(1)
             pynvml.nvmlInit()
-            handle = pynvml.nvmlDeviceGetHandleByIndex(self.device_id)
+            handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)
         else:
             alpr = Alpr('us', self.config, self.runtime)
         vehicle = VehicleClassifier(self.config, self.runtime)
@@ -354,7 +362,7 @@ if __name__ == '__main__':
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('output', nargs='?', type=str, default=None, help='filepath to save CSV of results')
     parser.add_argument('-b', '--batch_size', type=int, default=10, help='for GPU usage only')
-    parser.add_argument('-d', '--device_id', type=int, default=0, help='identification for GPU')
+    parser.add_argument('-d', '--device_ids', type=str, default='0', help='identification for GPU(s)')
     parser.add_argument('-g', '--gpu', action='store_true', help='run on GPU if available')
     parser.add_argument('-q', '--quiet', action='store_true', help='suppress all output besides final results')
     parser.add_argument('-r', '--resolution', type=str, default='all', help='video resolution to benchmark on')
@@ -365,9 +373,21 @@ if __name__ == '__main__':
     parser.add_argument('--runtime', type=str, help='path to runtime data, detects Windows/Linux and uses defaults')
     args = parser.parse_args()
 
-    # Run benchmarks
+    # Format and validate command line arguments
     if ',' in args.resolution:
         args.resolution = [r.strip() for r in args.resolution.split(',')]
+    if ',' in args.device_ids:
+        args.device_ids = [int(d.strip()) for d in args.device_ids.split(',')]
+    else:
+        args.device_ids = int(args.device_ids)
+    if args.gpu:
+        try:
+            import pynvml
+        except ModuleNotFoundError:
+            print('Please pip install nvidia-ml-py to run on GPU')
+            sys.exit(1)
+
+    # Run benchmarks
     bench = AlprBench(
         args.streams,
         args.step,
@@ -375,7 +395,7 @@ if __name__ == '__main__':
         args.thres,
         args.gpu,
         args.batch_size,
-        args.device_id,
+        args.device_ids,
         args.runtime,
         args.config,
         args.quiet)

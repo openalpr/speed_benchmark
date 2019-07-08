@@ -30,7 +30,8 @@ bash <(curl https://deb.openalpr.com/install)  # Select SDK
 
 **GPU Support**
 
-To run with the `--gpu` flag enabled, you must also `pip install nvidia-ml-py` 
+To run with the `--gpu` flag enabled, you must also `pip install nvidia-ml-py` and install the OpenALPR GPU 
+acceleration [libraries](http://doc.openalpr.com/on_premises.html#nvidia-gpu-acceleration)
 
 ## Usage
 

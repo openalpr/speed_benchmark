@@ -383,7 +383,7 @@ if __name__ == '__main__':
     if args.gpu:
         try:
             import pynvml
-        except ModuleNotFoundError:
+        except ImportError:
             print('Please pip install nvidia-ml-py to run on GPU')
             sys.exit(1)
 

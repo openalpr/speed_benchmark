@@ -240,8 +240,13 @@ class AlprBench:
         :return: None
         """
         total_fps = '{:.1f}'.format(self.frame_counter / elapsed)
-        avg_processor = '{:.1f}'.format(mean(self.processor_usage[resolution]))
-        max_processor = '{:.1f}'.format(max(self.processor_usage[resolution]))
+        if len(self.processor_usage[resolution]) > 0:
+            avg_processor = '{:.1f}'.format(mean(self.processor_usage[resolution]))
+            max_processor = '{:.1f}'.format(max(self.processor_usage[resolution]))
+        else:
+            print('\tWARNING: Could not collect processor usage for {}'.format(resolution))
+            max_processor = 'NA'
+            avg_processor = 'N/A'
         avg_frames = int(self.frame_counter / num_streams)
         self.results.add_row([resolution, total_fps, avg_processor, max_processor, avg_frames])
 
@@ -299,7 +304,12 @@ class AlprBench:
                     break
             elapsed = time() - start
             self.format_results(num_streams, res, elapsed)
-        min_cpu = min(mean(self.processor_usage[r]) for r in self.processor_usage.keys())
+        avg_usage = [mean(self.processor_usage[r]) for r in self.processor_usage if len(self.processor_usage[r]) > 0]
+        if len(avg_usage) > 0:
+            min_cpu = min(avg_usage)
+        else:
+            print('\tWARNING: no usage data for any resolution, exiting test')
+            min_cpu = 100
         return min_cpu
 
     def worker(self, resolution, device_id=0):

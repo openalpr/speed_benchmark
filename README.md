@@ -14,7 +14,7 @@ Benchmark speed for various video resolutions on CPU or GPU
 **Generic**
 
 1. Download the OpenALPR [SDK](http://doc.openalpr.com/sdk.html#installation) 
-2. Clone this repository `git clone https://github.com/addisonklinke/openalpr-consulting.git`
+2. Clone this repository `git clone https://github.com/openalpr/speed_benchmark.git`
 3. Install the Python requirements `pip install -r requirements.txt`
 
 **Docker**

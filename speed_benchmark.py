@@ -362,6 +362,7 @@ class AlprBench:
                     self.processor_usage[resolution].append(usage)
                 self.mutex.release()
 
+        alpr.unload()
 
 if __name__ == '__main__':
 

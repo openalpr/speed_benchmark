@@ -8,6 +8,7 @@ import re
 import requests
 from statistics import mean
 import subprocess
+import sys
 from threading import Thread, Lock
 from time import time, sleep
 if platform.system().lower().find('windows') == 0:
@@ -26,6 +27,7 @@ elif PYTHON_VERSION == '2':
     from urllib import urlretrieve
 else:
     raise OSError('Expected Python version 2 or 3, but received {}'.format(PYTHON_VERSION))
+alive_method = 'is_alive' if sys.version_info.minor >= 9 else 'isAlive'
 
 
 def get_cpu_model(operating):
@@ -269,7 +271,7 @@ class AlprBench:
                 t.start()
             while len(threads) > 0:
                 try:
-                    threads = [t.join() for t in threads if t is not None and t.isAlive()]
+                    threads = [t.join() for t in threads if t is not None and getattr(t, alive_method)()]
                 except KeyboardInterrupt:
                     print('\n\nCtrl-C received! Sending kill to threads...')
                     self.threads_active = False

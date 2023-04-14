@@ -17,8 +17,7 @@ from prettytable import PrettyTable
 import psutil
 from alprstream import AlprStream
 from openalpr import Alpr
-from vehicleclassifier import VehicleClassifier
-
+from openalpr import VehicleClassifier
 
 PYTHON_VERSION = platform.python_version_tuple()[0]
 if PYTHON_VERSION == '3':
@@ -129,7 +128,23 @@ class AlprBench:
             raise OSError('Detected OS other than Linux or Windows')
         self.message('\tOperating system: {}'.format(self.operating.capitalize()))
         self.message('\tCPU model: {}'.format(self.cpu_model))
-        alpr = Alpr('us', '', '')
+
+        # Define default runtime and config paths if not specified
+        if runtime is not None:
+            self.runtime = runtime
+        else:
+            self.runtime = '/usr/share/openalpr/runtime_data'
+            if self.operating == 'windows':
+                self.runtime = 'C:/OpenALPR/Agent' + self.runtime
+        if config is not None:
+            self.config = config
+        else:
+            self.config = '/usr/share/openalpr/config/openalpr.defaults.conf'
+            if self.operating == 'windows':
+                self.config = 'C:/OpenALPR/Agent' + self.config
+        self.message('\tRuntime data: {}'.format(self.runtime))
+        self.message('\tOpenALPR configuration: {}'.format(self.config))              
+        alpr = Alpr('us', self.config,self.runtime)
         self.message('\tOpenALPR version: {}'.format(alpr.get_version()))
         alpr.unload()
 
@@ -148,22 +163,6 @@ class AlprBench:
         self.round_robin = cycle(range(self.num_streams))
         self.results = PrettyTable()
         self.results.field_names = ['Resolution', 'Total FPS', 'CPU (Avg)', 'CPU (Max)', 'Frames']
-
-        # Define default runtime and config paths if not specified
-        if runtime is not None:
-            self.runtime = runtime
-        else:
-            self.runtime = '/usr/share/openalpr/runtime_data'
-            if self.operating == 'windows':
-                self.runtime = 'C:/OpenALPR/Agent' + self.runtime
-        if config is not None:
-            self.config = config
-        else:
-            self.config = '/usr/share/openalpr/config/openalpr.defaults.conf'
-            if self.operating == 'windows':
-                self.config = 'C:/OpenALPR/Agent' + self.config
-        self.message('\tRuntime data: {}'.format(self.runtime))
-        self.message('\tOpenALPR configuration: {}'.format(self.config))
 
         # Enable GPU acceleration
         if self.gpu:
@@ -265,7 +264,7 @@ class AlprBench:
                 s.connect_video_file(v, 0)
             for i in range(cpu_count()):
                 threads.append(Thread(target=self.worker, args=(res, )))
-                threads[i].setDaemon(True)
+                threads[i].setDaemon=True
             start = time()
             for t in threads:
                 t.start()

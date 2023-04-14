@@ -6,15 +6,15 @@ Drive OpenALPR on all CPU cores to benchmark speed for various video resolutions
 
 * OpenALPR commercial license (2-week evaluation licenses can be obtained from 
 [here](https://license.openalpr.com/evalrequest/))
-* Ubuntu 18.04, Ubuntu 16.04, or Windows 10
+* Ubuntu 22.04, Ubuntu 18.04, Ubuntu 16.04, Windows 10, or Windows 11
 * Python (2 or 3)
 
 ## Installation
 
 Generic
 
-1. Download the OpenALPR [SDK](http://doc.openalpr.com/sdk.html#installation) 
-2. Clone this repository `git clone https://github.com/addisonklinke/openalpr-consulting.git`
+1. Download the OpenALPR [SDK](https://help.rekor.ai/how-do-i-install-the-rekor-scout-sdk)
+2. Clone this repository `git clone https://github.com/openalpr/speed_benchmark.git`
 3. Install the Python requirements `pip install -r requirements.txt`
 
 Docker

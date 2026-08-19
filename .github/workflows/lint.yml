@@ -1,0 +1,15 @@
+name: Lint
+
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install ruff
+      # E9 = syntax/runtime errors, F = pyflakes (undefined names, unused imports, etc.)
+      - run: ruff check --select E9,F .

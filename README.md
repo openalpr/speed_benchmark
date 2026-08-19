@@ -2,12 +2,12 @@
 
 Drive OpenALPR on all CPU cores to benchmark speed for various video resolutions
 
-## Prequisites
+## Prerequisites
 
 * OpenALPR commercial license (2-week evaluation licenses can be obtained from 
 [here](https://license.openalpr.com/evalrequest/))
 * Ubuntu 22.04, Ubuntu 18.04, Ubuntu 16.04, Windows 10, or Windows 11
-* Python (2 or 3)
+* Python 3.8+
 
 ## Installation
 
@@ -21,7 +21,7 @@ Docker
 
 ```bash
 docker run -it --rm -v /etc/openalpr:/etc/openalpr/ openalpr/commercial-agent /bin/bash
-apt update && apt install -y curl python-pip git
+apt update && apt install -y curl python3-pip git
 git clone https://github.com/openalpr/speed_benchmark.git
 cd speed_benchmark/
 pip install -r requirements.txt
@@ -33,13 +33,13 @@ bash <(curl https://deb.openalpr.com/install)  # Select SDK
 1. View all command line options by running `python speed_benchmark.py -h`
 2. Select your desired resolution(s) - `vga, 720p, 1080p, and/or 4k`
 3. Benchmark using the default flags (1 stream and no minimum CPU threshold) by running `python speed_benchmark.py`
-3. Check the average CPU utilization (see sample output below). Resolutions with a utilization less than 95% are bottlenecked 
+4. Check the average CPU utilization (see sample output below). Resolutions with a utilization less than 95% are bottlenecked 
 on decoding the video stream (typical for higher resolutions). These should be rerun with additional streams for a 
 better estimate of maximum performance
-4. Set the `--thres` to a non-zero value. This causes the program to add streams until the threshold CPU utilization is 
+5. Set the `--thres` to a non-zero value. This causes the program to add streams until the threshold CPU utilization is 
 achieved. We recommend using `90 < thres < 95`. On large systems where the CPU utilization for a single stream is much 
-lower than your desired threshold, you can reduce the granularity of the search by setting `--steps > 1`
-5. Estimate the number of cameras for a given total FPS value by using the following per-camera rules of thumb
+lower than your desired threshold, you can reduce the granularity of the search by setting `--step > 1`
+6. Estimate the number of cameras for a given total FPS value by using the following per-camera rules of thumb
 
 * **Low Speed** (under 25 mph): 5-10 fps
 * **Medium Speed** (25-45 mph): 10-15 fps

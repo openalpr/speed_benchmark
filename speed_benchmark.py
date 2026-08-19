@@ -1,5 +1,5 @@
 import argparse
-from datetime import datetime
+import csv
 from itertools import cycle
 from multiprocessing import cpu_count
 import os
@@ -9,9 +9,10 @@ import requests
 from statistics import mean
 import subprocess
 import sys
+import tempfile
 from threading import Thread, Lock
 from time import time, sleep
-if platform.system().lower().find('windows') == 0:
+if platform.system() == 'Windows':
     from win32com.client import GetObject
 from prettytable import PrettyTable
 import psutil
@@ -19,50 +20,70 @@ from alprstream import AlprStream
 from openalpr import Alpr
 from openalpr import VehicleClassifier
 
-PYTHON_VERSION = platform.python_version_tuple()[0]
-if PYTHON_VERSION == '3':
-    from urllib.request import urlretrieve
-elif PYTHON_VERSION == '2':
-    from urllib import urlretrieve
-else:
-    raise OSError('Expected Python version 2 or 3, but received {}'.format(PYTHON_VERSION))
-alive_method = 'is_alive' if sys.version_info.minor >= 9 else 'isAlive'
+RESOLUTIONS = ['vga', '720p', '1080p', '4k']
+METADATA_ENDPOINT = 'http://169.254.169.254/latest'
 
 
 def get_cpu_model(operating):
     if operating == 'linux':
-        cpu_info = subprocess.check_output('lscpu').strip().decode().split('\n')
-        model_regex = re.compile('^Model name')
+        env = dict(os.environ, LC_ALL='C')  # lscpu localizes 'Model name' otherwise
+        cpu_info = subprocess.check_output('lscpu', env=env).strip().decode().split('\n')
+        model_regex = re.compile(r'^Model name')
         model = [c for c in cpu_info if model_regex.match(c)]
         model = model[0].split(':')[-1].strip()
     elif operating == 'windows':
-        root_winmgmts = GetObject('winmgmts:root\cimv2')
+        root_winmgmts = GetObject(r'winmgmts:root\cimv2')
         cpus = root_winmgmts.ExecQuery('Select * from Win32_Processor')
         model = cpus[0].Name
     else:
-        raise ValueError('Expected OS to be linux or windows, but received {}'.format(operating))
-    model = re.sub('\([RTM]+\)', '', model)
+        raise ValueError(f'Expected OS to be linux or windows, but received {operating}')
+    model = re.sub(r'\([RTM]+\)', '', model)
     return model
 
 
 def get_instance_type():
     """Attempt to query AWS metadata endpoint for instance type.
 
+    Supports IMDSv2 (token-based) with fallback to IMDSv1 if the token
+    request is rejected.
+
     :return str instance_type: AWS designation (or dash for NA).
     """
     try:
-        r = requests.get('http://169.254.169.254/latest/meta-data/instance-type')
+        headers = {}
+        token = requests.put(
+            f'{METADATA_ENDPOINT}/api/token',
+            headers={'X-aws-ec2-metadata-token-ttl-seconds': '60'},
+            timeout=2)
+        if token.ok:
+            headers['X-aws-ec2-metadata-token'] = token.text
+        r = requests.get(f'{METADATA_ENDPOINT}/meta-data/instance-type', headers=headers, timeout=2)
         r.raise_for_status()
         instance_type = r.text
-    except requests.exceptions.ConnectionError:
+    except requests.exceptions.RequestException:
         instance_type = '-'
     return instance_type
 
 
+def download_file(url, out):
+    """Download a file to disk, atomically renaming on completion so an
+    interrupted download never leaves a truncated file at ``out``.
+
+    :param str url: Source URL.
+    :param str out: Destination filepath.
+    :return: None
+    """
+    partial = f'{out}.part'
+    with requests.get(url, stream=True, timeout=30) as r:
+        r.raise_for_status()
+        with open(partial, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=1 << 20):
+                f.write(chunk)
+    os.replace(partial, out)
+
+
 def ptable_to_csv(table, filename, mode, headers=True):
     """Save PrettyTable results to a CSV file.
-
-    Adapted from @AdamSmith https://stackoverflow.com/questions/32128226
 
     :param PrettyTable table: Table object to get data from.
     :param str filename: Filepath for the output CSV.
@@ -70,17 +91,11 @@ def ptable_to_csv(table, filename, mode, headers=True):
     :param bool headers: Whether to include the header row in the CSV.
     :return: None
     """
-    raw = table.get_string()
-    data = [tuple(filter(None, map(str.strip, splitline)))
-            for line in raw.splitlines()
-            for splitline in [str(line).split('|')] if len(splitline) > 1]
-    if table.title is not None:
-        data = data[1:]
-    if not headers:
-        data = data[1:]
-    with open(filename, mode) as f:
-        for d in data:
-            f.write('{}\n'.format(','.join(d)))
+    with open(filename, mode, newline='') as f:
+        writer = csv.writer(f)
+        if headers:
+            writer.writerow(table.field_names)
+        writer.writerows(table.rows)
 
 
 class AlprBench:
@@ -90,7 +105,7 @@ class AlprBench:
     :param int step: Number of streams to add each time ``thres`` CPU
         utilization is not achieved.
     :param str or [str] resolution: Resolution(s) of videos to benchmark.
-    :param int or float: Target for lowest average CPU utilization. If
+    :param int or float thres: Target for lowest average CPU utilization. If
         ``thres > 0``, experiments will be run with additional streams until
         the threshold condition is met (recommended value 95).
     :param bool gpu: Whether or not to use GPU acceleration.
@@ -106,28 +121,33 @@ class AlprBench:
         self.num_streams = num_streams
         self.step = step
         if isinstance(resolution, str):
-            if resolution == 'all':
-                self.resolution = ['vga', '720p', '1080p', '4k']
-            else:
-                self.resolution = [resolution]
-        elif isinstance(resolution, list):
-            self.resolution = resolution
-        else:
-            raise ValueError('Expected list or str for resolution, but received {}'.format(resolution))
+            resolution = [resolution]
+        elif not isinstance(resolution, list):
+            raise ValueError(f'Expected list or str for resolution, but received {resolution}')
+        resolution = [r.strip().lower() for r in resolution]
+        if 'all' in resolution:
+            resolution = list(RESOLUTIONS)
+        invalid = [r for r in resolution if r not in RESOLUTIONS]
+        if invalid:
+            raise ValueError('Invalid resolution(s) {}: choose from {}'.format(
+                ', '.join(invalid), ', '.join(RESOLUTIONS + ['all'])))
+        self.resolution = list(dict.fromkeys(resolution))  # dedupe, preserve order
+        if not 0 <= thres < 100:
+            raise ValueError(f'thres must be in [0, 100), but received {thres} '
+                             '(a threshold of 100+ can never be met and would add streams forever)')
         self.thres = thres
         self.gpu = gpu
 
         # Detect operating system and alpr version
-        if platform.system().lower().find('linux') == 0:
+        if platform.system() == 'Linux':
             self.operating = 'linux'
-            self.cpu_model = get_cpu_model('linux')
-        elif platform.system().lower().find('windows') == 0:
+        elif platform.system() == 'Windows':
             self.operating = 'windows'
-            self.cpu_model = get_cpu_model('windows')
         else:
             raise OSError('Detected OS other than Linux or Windows')
-        self.message('\tOperating system: {}'.format(self.operating.capitalize()))
-        self.message('\tCPU model: {}'.format(self.cpu_model))
+        self.cpu_model = get_cpu_model(self.operating)
+        self.message(f'\tOperating system: {self.operating.capitalize()}')
+        self.message(f'\tCPU model: {self.cpu_model}')
 
         # Define default runtime and config paths if not specified
         if runtime is not None:
@@ -142,19 +162,15 @@ class AlprBench:
             self.config = '/usr/share/openalpr/config/openalpr.defaults.conf'
             if self.operating == 'windows':
                 self.config = 'C:/OpenALPR/Agent' + self.config
-        self.message('\tRuntime data: {}'.format(self.runtime))
-        self.message('\tOpenALPR configuration: {}'.format(self.config))              
-        alpr = Alpr('us', self.config,self.runtime)
-        self.message('\tOpenALPR version: {}'.format(alpr.get_version()))
+        self.message(f'\tRuntime data: {self.runtime}')
+        self.message(f'\tOpenALPR configuration: {self.config}')
+        alpr = Alpr('us', self.config, self.runtime)
+        self.message(f'\tOpenALPR version: {alpr.get_version()}')
         alpr.unload()
 
         # Prepare other attributes
-        if self.operating == 'linux':
-            self.downloads = '/tmp/alprbench'
-        else:
-            self.downloads = os.path.join(os.environ['TEMP'], 'alprbench')
-        if not os.path.exists(self.downloads):
-            os.mkdir(self.downloads)
+        self.downloads = os.path.join(tempfile.gettempdir(), 'alprbench')
+        os.makedirs(self.downloads, exist_ok=True)
         self.cpu_usage = {r: [] for r in self.resolution}
         self.threads_active = False
         self.frame_counter = 0
@@ -168,11 +184,12 @@ class AlprBench:
         if self.gpu:
             with open(self.config, 'r') as f:
                 lines = [l.strip() for l in f.read().split('\n') if l != '']
+            lines = [l for l in lines if not l.startswith('hardware_acceleration')]
             lines.append('hardware_acceleration = 1')
             self.config = os.path.join(self.downloads, 'openalpr.conf')
             with open(self.config, 'w') as f:
                 for l in lines:
-                    f.write('{}\n'.format(l))
+                    f.write(f'{l}\n')
 
     def __call__(self):
         """Run threaded benchmarks on all requested resolutions.
@@ -185,11 +202,10 @@ class AlprBench:
         min_cpu = 0
         while min_cpu <= self.thres:
             min_cpu = self.run_experiment(current_streams, videos)
-            self.message('\tLowest average CPU usage {:.1f}%'.format(min_cpu))
+            self.message(f'\tLowest average CPU usage {min_cpu:.1f}%')
             current_streams += self.step
         final_streams = current_streams - self.step
-        self.results.title = 'OpenALPR Speed: {} stream(s) on {} threads'.format(
-            final_streams, cpu_count())
+        self.results.title = f'OpenALPR Speed: {final_streams} stream(s) on {cpu_count()} threads'
         print(self.results)
         return final_streams
 
@@ -200,19 +216,16 @@ class AlprBench:
         """
         videos = []
         endpoint = 'https://github.com/openalpr/speed_benchmark/releases/download/v1'
-        files = ['vga.mp4', '720p.mp4', '1080p.mp4', '4k.mp4']
-        existing = os.listdir(self.downloads)
         self.message('Downloading benchmark videos...')
-        for f in files:
-            res = f.split('.')[0]
-            if res in self.resolution:
-                out = os.path.join(self.downloads, f)
-                videos.append(out)
-                if f not in existing:
-                    _ = urlretrieve('{}/{}'.format(endpoint, f), out)
-                    self.message('\tDownloaded {}'.format(res))
-                else:
-                    self.message('\tFound local {}'.format(res))
+        for res in self.resolution:
+            filename = f'{res}.mp4'
+            out = os.path.join(self.downloads, filename)
+            videos.append(out)
+            if not os.path.exists(out):
+                download_file(f'{endpoint}/{filename}', out)
+                self.message(f'\tDownloaded {res}')
+            else:
+                self.message(f'\tFound local {res}')
         return videos
 
     def format_results(self, num_streams, resolution, elapsed):
@@ -223,9 +236,10 @@ class AlprBench:
         :param float elapsed: Time to process video (in seconds).
         :return: None
         """
-        total_fps = '{:.1f}'.format(self.frame_counter / elapsed)
-        avg_cpu = '{:.1f}'.format(mean(self.cpu_usage[resolution]))
-        max_cpu = '{:.1f}'.format(max(self.cpu_usage[resolution]))
+        samples = self.cpu_usage[resolution]
+        total_fps = f'{self.frame_counter / elapsed:.1f}'
+        avg_cpu = f'{mean(samples):.1f}' if samples else '-'
+        max_cpu = f'{max(samples):.1f}' if samples else '-'
         avg_frames = int(self.frame_counter / num_streams)
         self.results.add_row([resolution, total_fps, avg_cpu, max_cpu, avg_frames])
 
@@ -245,64 +259,67 @@ class AlprBench:
         self.round_robin = cycle(range(num_streams))
         self.cpu_usage = {r: [] for r in self.resolution}
         self.results.clear_rows()
-
-        # Compile regex
-        if self.operating == 'linux':
-            name_regex = re.compile('(?<=\/)[^\.\/]+')
-        elif self.operating == 'windows':
-            name_regex = re.compile('(?<=\\\)[^\.\\\]+')
         self.threads_active = True
 
         # Run experiment
-        self.message('Testing with {} stream(s)...'.format(num_streams))
+        self.message(f'Testing with {num_streams} stream(s)...')
         for v in videos:
-            res = name_regex.findall(v)[-1]
-            self.message('\tProcessing {}'.format(res))
+            res = os.path.splitext(os.path.basename(v))[0]
+            self.message(f'\tProcessing {res}')
             self.frame_counter = 0
-            threads = []
             for s in self.streams:
                 s.connect_video_file(v, 0)
-            for i in range(cpu_count()):
-                threads.append(Thread(target=self.worker, args=(res, )))
-                threads[i].setDaemon=True
+            threads = [Thread(target=self.worker, args=(res, ), daemon=True)
+                       for _ in range(cpu_count())]
+            psutil.cpu_percent()  # reset baseline so the first worker sample is not a meaningless 0.0
             start = time()
             for t in threads:
                 t.start()
-            while len(threads) > 0:
-                try:
-                    threads = [t.join() for t in threads if t is not None and getattr(t, alive_method)()]
-                except KeyboardInterrupt:
-                    print('\n\nCtrl-C received! Sending kill to threads...')
-                    self.threads_active = False
-                    break
+            try:
+                for t in threads:
+                    while t.is_alive():
+                        t.join(timeout=0.5)
+            except KeyboardInterrupt:
+                print('\n\nCtrl-C received! Sending kill to threads...')
+                self.threads_active = False
+                for t in threads:
+                    t.join()
+                sys.exit(130)
             elapsed = time() - start
             self.format_results(num_streams, res, elapsed)
-        min_cpu = min(mean(self.cpu_usage[r]) for r in self.cpu_usage.keys())
+        sampled = [samples for samples in self.cpu_usage.values() if samples]
+        if not sampled:
+            self.message('\tNo CPU samples collected, stopping search')
+            return float('inf')
+        min_cpu = min(mean(samples) for samples in sampled)
         return min_cpu
 
     def worker(self, resolution):
         """Thread for a single Alpr and VehicleClassifier instance."""
         alpr = Alpr('us', self.config, self.runtime)
         vehicle = VehicleClassifier(self.config, self.runtime)
-        active_streams = sum([s.video_file_active() for s in self.streams])
-        total_queue = sum([s.get_queue_size() for s in self.streams])
-        while active_streams or total_queue > 0:
-            if not self.threads_active:
-                break
-            active_streams = sum([s.video_file_active() for s in self.streams])
-            total_queue = sum([s.get_queue_size() for s in self.streams])
-            idx = next(self.round_robin)
-            if self.streams[idx].get_queue_size() == 0:
-                sleep(0.1)
-                continue
-            results = self.streams[idx].process_frame(alpr)
-            if results['epoch_time'] > 0 and results['processing_time_ms'] > 0:
-                _ = self.streams[idx].pop_completed_groups_and_recognize_vehicle(vehicle)
-                self.mutex.acquire()
-                self.frame_counter += 1
-                if self.frame_counter % 10 == 0:
-                    self.cpu_usage[resolution].append(psutil.cpu_percent())
-                self.mutex.release()
+        try:
+            while self.threads_active:
+                active_streams = sum(s.video_file_active() for s in self.streams)
+                total_queue = sum(s.get_queue_size() for s in self.streams)
+                if not active_streams and total_queue == 0:
+                    break
+                with self.mutex:
+                    idx = next(self.round_robin)
+                if self.streams[idx].get_queue_size() == 0:
+                    sleep(0.1)
+                    continue
+                results = self.streams[idx].process_frame(alpr)
+                if results['epoch_time'] > 0 and results['processing_time_ms'] > 0:
+                    _ = self.streams[idx].pop_completed_groups_and_recognize_vehicle(vehicle)
+                    with self.mutex:
+                        self.frame_counter += 1
+                        if self.frame_counter % 10 == 0:
+                            self.cpu_usage[resolution].append(psutil.cpu_percent())
+        finally:
+            alpr.unload()
+            if hasattr(vehicle, 'unload'):
+                vehicle.unload()
 
 
 if __name__ == '__main__':
@@ -315,7 +332,9 @@ if __name__ == '__main__':
     parser.add_argument('output', nargs='?', type=str, default=None, help='filepath to save CSV of results')
     parser.add_argument('-g', '--gpu', action='store_true', help='run on GPU if available')
     parser.add_argument('-q', '--quiet', action='store_true', help='suppress all output besides final results')
-    parser.add_argument('-r', '--resolution', type=str, default='all', help='video resolution to benchmark on')
+    parser.add_argument('-r', '--resolution', type=str, default='all',
+                        help='video resolution(s) to benchmark on, comma separated: {} or all'.format(
+                            ', '.join(RESOLUTIONS)))
     parser.add_argument('-s', '--streams', type=int, default=1, help='starting number of camera streams to simulate')
     parser.add_argument('-t', '--thres', type=int, default=0, help='target for lowest average CPU utilization')
     parser.add_argument('--step', type=int, default=1, help='number of streams to add each time thres is not achieved')
@@ -340,14 +359,14 @@ if __name__ == '__main__':
     if args.output is not None:
         # Add CPU model and stream count to results table
         table = bench.results
-        n_rows = len(table._rows)
+        n_rows = len(table.rows)
         table.add_column('CPU Model', [bench.cpu_model] * n_rows)
         table.add_column('AWS Instance', [get_instance_type()] * n_rows)
         table.add_column('Streams', [num_streams] * n_rows)
 
         # Save results to disk
         save = os.path.realpath(args.output)
-        print('Saving results to {}'.format(save))
+        print(f'Saving results to {save}')
         if os.path.exists(save):
             ptable_to_csv(table, save, 'a', headers=False)
         else:

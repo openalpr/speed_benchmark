@@ -13,7 +13,7 @@ Drive OpenALPR on all CPU cores to benchmark speed for various video resolutions
 
 Generic
 
-1. Download the OpenALPR [SDK](https://help.rekor.ai/how-do-i-install-the-rekor-scout-sdk)
+1. Download the OpenALPR [SDK](https://www.rekor.ai/intelligence-services/vehicle-recognition-sdk)
 2. Clone this repository `git clone https://github.com/openalpr/speed_benchmark.git`
 3. Install the Python requirements `pip install -r requirements.txt`
 
